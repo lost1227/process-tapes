@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 import json
-from re import L
 import subprocess
 from PIL import Image
 import imagehash
@@ -23,7 +22,9 @@ concat = Path.cwd() / 'concat.txt'
 
 parser = argparse.ArgumentParser()
 parser.add_argument("search_dir")
-parser.add_argument("--out_dir", default="")
+parser.add_argument("--out-dir", default="")
+parser.add_argument("--dry-run", action='store_true')
+parser.add_argument("--mv", action='store_true')
 
 args = parser.parse_args()
 
@@ -134,14 +135,23 @@ for idx, curr in enumerate(tqdm(files, desc='Calculate joins')):
 
     joins.append([curr])
 
-joins.append(curr_join)
+if len(curr_join) > 0:
+    joins.append(curr_join)
 
-for join in joins:
+for i, join in enumerate(joins):
+    print(f"\x1b[92m({i:03d}/{len(joins):03d})\x1b[37m")
     print_join(join)
+    if args.dry_run:
+        print()
+        continue
 
     if len(join) == 1:
         outfile = outdir / join[0].path.name
-        shutil.copyfile(join[0].path, outfile)
+        assert not outfile.exists()
+        if args.mv:
+            join[0].path.rename(outfile)
+        else:
+            shutil.copyfile(join[0].path, outfile)
     else:
         outfile = None
         for item in join:
@@ -156,6 +166,8 @@ for join in joins:
                 cf.write(f"file '{item.path.resolve()}'\n")
         subprocess.check_call([
             'ffmpeg',
+            '-v', 'warning',
+            '-stats',
             '-f', 'concat',
             '-safe', '0',
             '-i', str(concat.resolve()),
@@ -166,3 +178,9 @@ for join in joins:
 
     print()
 
+in_index = indir / 'index.txt'
+out_index = outdir / 'index.txt'
+if in_index.is_file():
+    shutil.copyfile(in_index, out_index)
+
+print("Done!")
